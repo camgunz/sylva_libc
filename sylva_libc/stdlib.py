@@ -3,14 +3,15 @@ from cdump import cdefs as CDefs
 from .definitions import Definitions
 
 ###
-# carray
-# cpointer
-# cfn
-# cfntype
-# cstruct
-# cenum
+# carray (members: element_type, element_count)
+# cpointer (members: base_type)
+# cfn (callable, member: params, return_type)
+# cfntype (params, return_type)
+# cstruct (fields)
+# cenum (members)
 # cunion
 # cvoid
+# ctype (for stuff like __builtin_va_list that is referenced but never defined)
 ###
 
 _BUILTIN_TYPES = {
@@ -34,7 +35,7 @@ _BUILTIN_TYPES = {
     'float _Complex': 'cfloati',
     'double _Complex': 'cdoublei',
     'long double _Complex': 'clongdoublei',
-    '_Bool': 'cbool',
+    ('bool', '_Bool'): 'cbool',
     'void': 'cvoid'
 }
 

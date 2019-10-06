@@ -1,7 +1,7 @@
 .PHONY: test install help
 
 test: install
-	sylva_libc $(cat musl-libc.txt) -o libc.sy
+	sylva_libc -o libc.sy $$(cat musl-libc.txt)
 
 install:
 	python setup.py install
