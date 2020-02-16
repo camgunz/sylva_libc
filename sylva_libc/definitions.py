@@ -5,14 +5,6 @@ from abc import ABC, abstractmethod
 from cdump import cdefs as CDefs
 from cdump.parser import Parser
 
-###
-# [TODO]
-# - pointer mods should only emit when function params
-# - Union spellings contain junk
-# - Opaque types (dangling references)
-# - Variadic functions
-###
-
 
 class SylvaDef(ABC):
 
@@ -63,9 +55,9 @@ class CPointer(SylvaRef):
         self.is_const = is_const
 
     def emit_ref(self):
-        if self.is_const:
+        if self.base_type.is_const:
             return f'cptr({self.base_type.emit_ref()})'
-        return f'cptr({self.base_type.emit_ref()})!'
+        return f'cptr({self.base_type.emit_ref()}!)'
 
 
 # [TODO] I think this should decompose into some vals earlier
@@ -80,6 +72,31 @@ class CEnum(SylvaDef):
             'val {name} {type.emit_ref()}'
             for name, type in self.values.items()
         ])
+
+
+class CFunctionParameter(SylvaDef):
+
+    __slots__ = ('name', 'type')
+
+    def __init__(self, name, type):
+        self.name = name
+        self.type = type
+
+    def emit_def(self):
+        return f'{self.name}: {self.type.emit_ref()}'
+
+
+class CFunctionParameterType(SylvaDef):
+
+    __slots__ = ('type',)
+
+    def __init__(self, type):
+        self.type = type
+
+    def emit_def(self):
+        if self.type.is_const:
+            return f'{self.type.emit_ref()}'
+        return f'{self.type.emit_ref()}!'
 
 
 class CFunction(SylvaDef, SylvaRef):
@@ -97,19 +114,13 @@ class CFunction(SylvaDef, SylvaRef):
             return (
                 'cfn {}({})'.format(
                     self.name,
-                    ', '.join([
-                        f'{name}: {param.emit_ref()}'
-                        for name, param in self.parameters.items()
-                    ])
+                    ', '.join([param.emit_def() for param in self.parameters])
                 )
             )
         return (
             'cfn {}({}): {}'.format(
                 self.name,
-                ', '.join([
-                    f'{name}: {param.emit_ref()}'
-                    for name, param in self.parameters.items()
-                ]),
+                ', '.join([param.emit_def() for param in self.parameters]),
                 self.return_type.emit_ref()
             )
         )
@@ -132,14 +143,14 @@ class CFunctionType(SylvaDef, SylvaRef):
             return (
                 'cfntype({})'.format(
                     ', '.join([
-                        param.emit_ref() for param in self.parameter_types
+                        param.emit_def() for param in self.parameter_types
                     ])
                 )
             )
         return (
             'cfntype({}): {}'.format(
                 ', '.join([
-                    param.emit_ref() for param in self.parameter_types
+                    param.emit_def() for param in self.parameter_types
                 ]),
                 self.return_type.emit_ref()
             )
@@ -151,12 +162,14 @@ class CFunctionType(SylvaDef, SylvaRef):
     def emit_ref(self):
         return self.emit()
 
+
 class Reference(SylvaRef):
 
-    __slots__ = ('target',)
+    __slots__ = ('target', 'is_const')
 
-    def __init__(self, target):
+    def __init__(self, target, is_const):
         self.target = target
+        self.is_const = is_const
 
     def emit_ref(self):
         return self.target.replace(' ', '_')
@@ -381,17 +394,20 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.Function):
             cfunction = CFunction(
                 cdef.name,
-                {
-                    name: self._process_cdef(type)
+                [
+                    CFunctionParameter(name, self._process_cdef(type))
                     for name, type in cdef.parameters.items()
-                },
+                ],
                 self._process_cdef(cdef.return_type)
             )
             self.defs[cfunction.name] = cfunction
             return cfunction
         if isinstance(cdef, CDefs.FunctionPointer):
             return CFunctionType(
-                [self._process_cdef(type) for type in cdef.parameter_types],
+                [
+                    CFunctionParameterType(self._process_cdef(type))
+                    for type in cdef.parameter_types
+                ],
                 self._process_cdef(cdef.return_type)
             )
         if isinstance(cdef, CDefs.Pointer):
@@ -400,7 +416,7 @@ class DefinitionBuilder:
                 cdef.is_const,
             )
         if isinstance(cdef, CDefs.Reference):
-            return Reference(cdef.target)
+            return Reference(cdef.target, cdef.is_const)
         if isinstance(cdef, CDefs.ScalarType):
             return CScalarType.FromCDef(cdef)
         if isinstance(cdef, CDefs.Struct):
