@@ -6,6 +6,7 @@ setup(
     version="0.0.1",
     packages=find_packages(),
     scripts=['scripts/sylva_libc'],
+    python_requires='>=3.7.0',
 
     # metadata to display on PyPI
     author="Charlie Gunyon",

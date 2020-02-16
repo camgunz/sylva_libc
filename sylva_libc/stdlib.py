@@ -46,7 +46,12 @@ class StdLib:
 
     @property
     def builtins(self):
+        # So here I want to look through every typedef.  Let's just print all
+        # those out
         for cdef in self.definitions:
+            print(cdef)
+            if cdef.name not in {'struct _IO_FILE', 'FILE', 'fputs'}:
+                continue
             if not isinstance(cdef, CDefs.Typedef):
                 continue
             if not isinstance(cdef.type, CDefs.Builtin):

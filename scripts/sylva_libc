@@ -2,16 +2,14 @@
 
 import argparse
 
-from sylva_libc.stdlib import StdLib
+from sylva_libc.definitions import DefinitionBuilder
 
 
-def generate(input_files, output_file, libclang=None):
-    stdlib = StdLib(input_files, libclang)
-    builtins = [builtin.emit_sylva() for builtin in stdlib.builtins]
-    definitions = [cdef.emit_sylva() for cdef in stdlib.definitions]
-    with open(output_file, 'wb') as fobj:
-        fobj.write('\n'.join(builtins + [''] + definitions).encode('utf-8'))
-
+def generate(input_files, libclang=None):
+    builder = DefinitionBuilder.FromLibcFiles(input_files, libclang)
+    builder.build()
+    for definition in builder.defs.values():
+        print(definition.emit_def())
 
 def main():
     parser = argparse.ArgumentParser()
@@ -23,14 +21,9 @@ def main():
         'input_files', type=str, nargs='+',
         help='Files to process'
     )
-    parser.add_argument(
-        '-o', '--output_file', type=str,
-        help='Output for serialized definitions to'
-    )
 
     args = parser.parse_args()
-
-    generate(args.input_files, args.output_file, args.libclang)
+    generate(args.input_files, args.libclang)
 
 
 main()
