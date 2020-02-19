@@ -1,6 +1,6 @@
 *.swp
 build
 dist
-cdump.egg-info
+sylva_libc.egg-info
 .python-version
 __pycache__
