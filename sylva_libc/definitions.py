@@ -20,6 +20,11 @@ class SylvaRef(ABC):
         ...
 
 
+class AnonymousDef(SylvaDef, SylvaRef):
+    def emit_ref(self):
+        return self.emit_def()
+
+
 class Alias(SylvaDef):
 
     __slots__ = ('name', 'target',)
@@ -39,6 +44,9 @@ class Array(SylvaRef):
     def __init__(self, element_type, element_count):
         self.element_type = element_type
         self.element_count = element_count
+        if element_type is None:
+            import pdb
+            pdb.set_trace()
 
     def emit_ref(self):
         if self.element_count is not None:
@@ -231,7 +239,7 @@ class CScalarType(SylvaRef):
         )
 
 
-class CAnonymousStruct(SylvaDef):
+class CAnonymousStruct(AnonymousDef):
 
     __slots__ = ('fields',)
 
@@ -275,7 +283,7 @@ class CStruct(SylvaDef, SylvaRef):
         return self.name.replace(' ', '_')
 
 
-class CAnonymousUnion(SylvaDef):
+class CAnonymousUnion(AnonymousDef):
 
     __slots__ = ('fields',)
 
@@ -333,17 +341,6 @@ class Val(SylvaDef, SylvaRef):
 
     def emit_ref(self):
         return self.name
-
-
-###
-# cfn fputs(cptr(i8), cptr(FILE)!): i32
-# cfn strtok_r(
-#   str: cptr(i8)!,
-#   delim: cptr(i8),
-#   saveptr: cptr(cptr(i8)!)!
-# ): cptr(i8)
-# cfn __FLOAT_BITS(__f: f32): u32
-###
 
 
 class DefinitionBuilder:
@@ -420,6 +417,7 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.ScalarType):
             return CScalarType.FromCDef(cdef)
         if isinstance(cdef, CDefs.Struct):
+            print(cdef.fields)
             if cdef.name:
                 struct = CStruct(
                     cdef.name,
@@ -430,6 +428,11 @@ class DefinitionBuilder:
                 )
                 self.defs[struct.name] = struct
             else:
+                for name, type in cdef.fields.items():
+                    if type is None:
+                        print(f'Warning: {name} has None type')
+                        import pdb
+                        pdb.set_trace()
                 struct = CAnonymousStruct({
                     name: self._process_cdef(type)
                     for name, type in cdef.fields.items()
@@ -455,6 +458,8 @@ class DefinitionBuilder:
                     for name, type in cdef.fields.items()
                 })
             return union
+        import pdb
+        pdb.set_trace()
         raise Exception(f'Unknown C definition: {cdef} ({type(cdef)})')
 
     @classmethod

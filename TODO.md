@@ -5,6 +5,42 @@
 - Opaque types (dangling references)
 - Warn when alignments of base types don't match
 
+## Bugs
+
+```
+typedef struct {
+  union {
+    int __i[sizeof(long)==8?14:9];
+    volatile int __vi[sizeof(long)==8?14:9];
+    unsigned long __s[sizeof(long)==8?7:9];
+  } __u;
+} pthread_attr_t;
+
+cstruct struct_pthread_attr_t {
+  : cunion {
+  __i: i32[14],
+  __vi: i32[14],
+  __s: u64[7]
+},
+  __u: union_(anonymous_union_at_/usr/lib/musl/include/bits/alltypes.h:372:18)
+}
+```
+
+```
+struct timespec {
+  time_t tv_sec;
+  int :8*(sizeof(time_t)-sizeof(long))*(__BYTE_ORDER==4321);
+  long tv_nsec;
+  int :8*(sizeof(time_t)-sizeof(long))*(__BYTE_ORDER!=4321);
+};
+
+cstruct struct_timespec {
+  tv_sec: time_t,
+  : i32,
+  tv_nsec: i64
+}
+```
+
 ## Broadly
 
 Eventually Sylva needs baseline C FFI support, which means defining base types

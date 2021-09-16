@@ -1,7 +1,7 @@
-.PHONY: test install help
+.PHONY: help venv depinstall install linuxtest macos_test
 
 help:
-	@echo "Commands: test | install"
+	@echo "Commands: linux_test | macos_test | depinstall | install"
 
 venv:
 ifeq ($(VIRTUAL_ENV), )
@@ -14,5 +14,8 @@ depinstall: venv
 install: depinstall
 	python setup.py install
 
-test: install
+linux_test: install
 	sylva_libc $$(cat musl-libc.txt)
+
+macos_test: install
+	sylva_libc --libclang=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib $$(cat macos-libc.txt)
