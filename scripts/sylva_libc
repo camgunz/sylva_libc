@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import platform
 
 from sylva_libc.definitions import DefinitionBuilder
 
@@ -12,6 +13,10 @@ def generate(input_files, preprocessor, libclang=None):
         libclang
     )
     builder.build()
+    print(f'const PLATFORM_NAME = "{platform.system()}"')
+    print(f'const PLATFORM_VERSION = "{platform.release()}"')
+    print(f'const PLATFORM_MACHINE = "{platform.machine()}"')
+    print()
     for definition in builder.defs.values():
         print(definition.emit_def())
 
