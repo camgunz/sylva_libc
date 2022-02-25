@@ -5,14 +5,22 @@ import argparse
 from sylva_libc.definitions import DefinitionBuilder
 
 
-def generate(input_files, libclang=None):
-    builder = DefinitionBuilder.FromLibcFiles(input_files, libclang)
+def generate(input_files, preprocessor, libclang=None):
+    builder = DefinitionBuilder.FromLibcFiles(
+        input_files,
+        preprocessor,
+        libclang
+    )
     builder.build()
     for definition in builder.defs.values():
         print(definition.emit_def())
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--preprocessor', type=str, required=True,
+        help='Path to preprocessor executable'
+    )
     parser.add_argument(
         '--libclang', type=str,
         help='Path to libclang library'
@@ -23,7 +31,7 @@ def main():
     )
 
     args = parser.parse_args()
-    generate(args.input_files, args.libclang)
+    generate(args.input_files, args.preprocessor, args.libclang)
 
 
 main()

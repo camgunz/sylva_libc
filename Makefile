@@ -15,7 +15,7 @@ install: depinstall
 	python setup.py install
 
 linux_test: install
-	sylva_libc $$(cat musl-libc.txt)
+	sylva_libc --preprocessor=/usr/bin/clang $$(cat musl-libc.txt)
 
 macos_test: install
-	sylva_libc --libclang=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib $$(cat macos-libc.txt)
+	sylva_libc --preprocessor=/usr/bin/clang --libclang=/Library/Developer/CommandLineTools/usr/lib/libclang.dylib $$(cat macos-libc.txt)

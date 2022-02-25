@@ -77,7 +77,7 @@ class CEnum(SylvaDef):
 
     def emit_def(self):
         return '\n'.join([
-            'val {name} {type.emit_ref()}'
+            'const {name} {type.emit_ref()}'
             for name, type in self.values.items()
         ])
 
@@ -139,26 +139,30 @@ class CFunction(SylvaDef, SylvaRef):
 
 class CFunctionType(SylvaDef, SylvaRef):
 
-    __slots__ = ('parameter_types', 'return_type')
+    __slots__ = ('parameters', 'return_type')
 
-    def __init__(self, parameter_types, return_type):
-        self.parameter_types = parameter_types
+    def __init__(self, parameters, return_type, is_block=False):
+        self.parameters = parameters
         self.return_type = return_type
+        self.is_block = is_block
 
     def emit(self):
+        keyword = 'cblockfntype' if self.is_block else 'cfntype'
         if (isinstance(self.return_type, CScalarType) and
                 self.return_type.type == CScalarType.BuiltinTypes.VOID):
             return (
-                'cfntype({})'.format(
+                '{}({})'.format(
+                    keyword,
                     ', '.join([
-                        param.emit_def() for param in self.parameter_types
+                        param.emit_def() for param in self.parameters
                     ])
                 )
             )
         return (
-            'cfntype({}): {}'.format(
+            '{}({}): {}'.format(
+                keyword,
                 ', '.join([
-                    param.emit_def() for param in self.parameter_types
+                    param.emit_def() for param in self.parameters
                 ]),
                 self.return_type.emit_ref()
             )
@@ -327,7 +331,7 @@ class CUnion(SylvaDef, SylvaRef):
         return self.name.replace(' ', '_')
 
 
-class Val(SylvaDef, SylvaRef):
+class Const(SylvaDef, SylvaRef):
 
     __slots__ = ('name', 'type', 'value')
 
@@ -337,7 +341,7 @@ class Val(SylvaDef, SylvaRef):
         self.value = value
 
     def emit_def(self):
-        return f'val {self.name}: {self.value}{self.type.emit_ref()}'
+        return f'const {self.name}: {self.value}{self.type.emit_ref()}'
 
     def emit_ref(self):
         return self.name
@@ -384,7 +388,7 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.Enum):
             vals = []
             for name, value in cdef.values.items():
-                val = Val(name, self._process_cdef(cdef.type), value)
+                val = Const(name, self._process_cdef(cdef.type), value)
                 self.defs[val.name] = val
                 vals.append(val)
             return vals
@@ -392,8 +396,8 @@ class DefinitionBuilder:
             cfunction = CFunction(
                 cdef.name,
                 [
-                    CFunctionParameter(name, self._process_cdef(type))
-                    for name, type in cdef.parameters.items()
+                    CFunctionParameter(name, self._process_cdef(ctype))
+                    for name, ctype in cdef.parameters.items()
                 ],
                 self._process_cdef(cdef.return_type)
             )
@@ -402,8 +406,8 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.FunctionPointer):
             return CFunctionType(
                 [
-                    CFunctionParameterType(self._process_cdef(type))
-                    for type in cdef.parameter_types
+                    CFunctionParameter(name, self._process_cdef(ctype))
+                    for name, ctype in cdef.parameters.items()
                 ],
                 self._process_cdef(cdef.return_type)
             )
@@ -417,25 +421,20 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.ScalarType):
             return CScalarType.FromCDef(cdef)
         if isinstance(cdef, CDefs.Struct):
-            print(cdef.fields)
             if cdef.name:
                 struct = CStruct(
                     cdef.name,
                     {
-                        name: self._process_cdef(type)
-                        for name, type in cdef.fields.items()
+                        name: self._process_cdef(ctype)
+                        for name, ctype in cdef.fields.items()
+                        if name != 'packed'
                     }
                 )
                 self.defs[struct.name] = struct
             else:
-                for name, type in cdef.fields.items():
-                    if type is None:
-                        print(f'Warning: {name} has None type')
-                        import pdb
-                        pdb.set_trace()
                 struct = CAnonymousStruct({
-                    name: self._process_cdef(type)
-                    for name, type in cdef.fields.items()
+                    name: self._process_cdef(ctype)
+                    for name, ctype in cdef.fields.items()
                 })
             return struct
         if isinstance(cdef, CDefs.Typedef):
@@ -447,24 +446,31 @@ class DefinitionBuilder:
                 union = CUnion(
                     cdef.name,
                     {
-                        name: self._process_cdef(type)
-                        for name, type in cdef.fields.items()
+                        name: self._process_cdef(ctype)
+                        for name, ctype in cdef.fields.items()
                     }
                 )
                 self.defs[union.name] = union
             else:
                 union = CAnonymousUnion({
-                    name: self._process_cdef(type)
-                    for name, type in cdef.fields.items()
+                    name: self._process_cdef(ctype)
+                    for name, ctype in cdef.fields.items()
                 })
             return union
-        import pdb
-        pdb.set_trace()
+        if isinstance(cdef, CDefs.BlockFunctionPointer):
+            return CFunctionType(
+                [
+                    CFunctionParameter(name, self._process_cdef(ctype))
+                    for name, ctype in cdef.parameters.items()
+                ],
+                self._process_cdef(cdef.return_type),
+                is_block=True
+            )
         raise Exception(f'Unknown C definition: {cdef} ({type(cdef)})')
 
     @classmethod
-    def FromLibcFiles(cls, libc_files, libclang=None):
-        parser = Parser(libclang)
+    def FromLibcFiles(cls, libc_files, preprocessor, libclang=None):
+        parser = Parser(preprocessor, libclang)
         return cls([
             cdef
             for libc_file in libc_files
