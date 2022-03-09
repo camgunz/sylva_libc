@@ -37,21 +37,20 @@ class Alias(SylvaDef):
         return f'alias {self.name}: {self.target.emit_ref()}'
 
 
-class Array(SylvaRef):
+class CArray(SylvaRef):
 
     __slots__ = ('element_type', 'element_count')
 
     def __init__(self, element_type, element_count):
         self.element_type = element_type
         self.element_count = element_count
-        if element_type is None:
-            import pdb
-            pdb.set_trace()
 
     def emit_ref(self):
-        if self.element_count is not None:
-            return f'{self.element_type.emit_ref()}[{self.element_count}]'
-        return f'{self.element_type.emit_ref()}[]'
+        et = self.element_type
+        ec = self.element_count
+        if ec is not None:
+            return f'carray({et.emit_ref()}, {ec}u)'
+        return f'carray({et.emit_ref()})'
 
 
 class CPointer(SylvaRef):
@@ -119,12 +118,14 @@ class CFunction(SylvaDef, SylvaRef):
     def emit_def(self):
         if (isinstance(self.return_type, CScalarType) and
                 self.return_type.type == CScalarType.BuiltinTypes.VOID):
+            # pylint: disable=consider-using-f-string
             return (
                 'cfn {}({})'.format(
                     self.name,
                     ', '.join([param.emit_def() for param in self.parameters])
                 )
             )
+        # pylint: disable=consider-using-f-string
         return (
             'cfn {}({}): {}'.format(
                 self.name,
@@ -150,6 +151,7 @@ class CFunctionType(SylvaDef, SylvaRef):
         keyword = 'cblockfntype' if self.is_block else 'cfntype'
         if (isinstance(self.return_type, CScalarType) and
                 self.return_type.type == CScalarType.BuiltinTypes.VOID):
+            # pylint: disable=consider-using-f-string
             return (
                 '{}({})'.format(
                     keyword,
@@ -158,6 +160,7 @@ class CFunctionType(SylvaDef, SylvaRef):
                     ])
                 )
             )
+        # pylint: disable=consider-using-f-string
         return (
             '{}({}): {}'.format(
                 keyword,
@@ -198,22 +201,27 @@ class CScalarType(SylvaRef):
         FLOAT = enum.auto()
         COMPLEX = enum.auto()
 
-    def __init__(self, type, size, is_signed, is_const, is_volatile):
+    def __init__(self, type, size, is_signed, is_const, is_bitfield,
+                 bitfield_width):
         self.type = type
         self.size = size
         self.is_signed = is_signed
         self.is_const = is_const
-        self.is_volatile = is_volatile
+        self.is_bitfield = is_bitfield
+        self.bitfield_width = bitfield_width
 
     def emit_ref(self):
         if self.type == self.BuiltinTypes.VOID:
-            return 'void'
+            return 'cvoid'
         if self.type == self.BuiltinTypes.BOOL:
             return 'bool'
         if self.type == self.BuiltinTypes.INTEGER:
-            if self.is_signed:
-                return f'i{self.size * 8}'
-            return f'u{self.size * 8}'
+            if self.size is None:
+                return 'int' if self.is_signed else 'uint'
+            base = f'i{self.size*8}' if self.is_signed else f'u{self.size*8}'
+            if not self.is_bitfield:
+                return base
+            return f'cbitfield({base}, {self.bitfield_width})'
         if self.type == self.BuiltinTypes.FLOAT:
             return f'f{self.size * 8}'
         if self.type == self.BuiltinTypes.COMPLEX:
@@ -239,7 +247,8 @@ class CScalarType(SylvaRef):
             cdef.size,
             cdef.is_signed,
             cdef.is_const,
-            cdef.is_volatile
+            cdef.is_bitfield if hasattr(cdef, 'is_bitfield') else False,
+            cdef.bitfield_width if hasattr(cdef, 'bitfield_width') else None
         )
 
 
@@ -274,14 +283,14 @@ class CStruct(SylvaDef, SylvaRef):
     def emit_def(self):
         if self.fields:
             return '\n'.join([
-                'cstruct %s {' % (self.name.replace(' ', '_')),
+                f'cstruct {self.name.replace(" ", "_")} {{',
                 ',\n'.join([
                     f'  {name}: {type.emit_ref()}'
                     for name, type in self.fields.items()
                 ]),
                 '}'
             ])
-        return f'cstruct {self.name.replace(" ", "_")}'
+        return f'cstruct {self.name.replace(" ", "_")} {{}}'
 
     def emit_ref(self):
         return self.name.replace(' ', '_')
@@ -318,7 +327,7 @@ class CUnion(SylvaDef, SylvaRef):
     def emit_def(self):
         if self.fields:
             return '\n'.join([
-                'cunion %s {' % (self.name.replace(' ', '_')),
+                f'cunion {self.name.replace(" ", "_")} {{',
                 ',\n'.join([
                     f'  {name}: {type.emit_ref()}'
                     for name, type in self.fields.items()
@@ -381,7 +390,7 @@ class DefinitionBuilder:
 
     def _process_cdef(self, cdef):
         if isinstance(cdef, CDefs.Array):
-            return Array(
+            return CArray(
                 self._process_cdef(cdef.element_type),
                 cdef.element_count
             )
@@ -438,7 +447,18 @@ class DefinitionBuilder:
                 })
             return struct
         if isinstance(cdef, CDefs.Typedef):
-            alias = Alias(cdef.name, self._process_cdef(cdef.type))
+            underlying_type = self._process_cdef(cdef.type)
+            if isinstance(underlying_type, Reference) and \
+                    underlying_type.target.startswith('enum '):
+                underlying_type = CScalarType(
+                    type=CScalarType.BuiltinTypes.INTEGER,
+                    size=None,
+                    is_signed=True,
+                    is_const=True,
+                    is_bitfield=False,
+                    bitfield_width=None
+                )
+            alias = Alias(cdef.name, underlying_type)
             self.defs[alias.name] = alias
             return alias
         if isinstance(cdef, CDefs.Union):
