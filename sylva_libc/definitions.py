@@ -21,13 +21,17 @@ class SylvaRef(ABC):
 
 
 class AnonymousDef(SylvaDef, SylvaRef):
+
     def emit_ref(self):
         return self.emit_def()
 
 
 class Alias(SylvaDef):
 
-    __slots__ = ('name', 'target',)
+    __slots__ = (
+        'name',
+        'target',
+    )
 
     def __init__(self, name, target):
         self.name = name
@@ -37,7 +41,7 @@ class Alias(SylvaDef):
         return f'alias {self.name}: {self.target.emit_ref()}'
 
 
-class CArray(SylvaRef):
+class CAnonymousArray(AnonymousDef):
 
     __slots__ = ('element_type', 'element_count')
 
@@ -45,12 +49,33 @@ class CArray(SylvaRef):
         self.element_type = element_type
         self.element_count = element_count
 
-    def emit_ref(self):
+    def emit_def(self):
         et = self.element_type
         ec = self.element_count
-        if ec is not None:
-            return f'carray({et.emit_ref()}, {ec}u)'
-        return f'carray({et.emit_ref()})'
+        if ec is None:
+            return f'carray[{et.emit_ref()}...]'
+        return f'carray[{et.emit_ref()} * {ec}]'
+
+
+class CArray(SylvaDef, SylvaRef):
+
+    __slots__ = ('name', 'element_type', 'element_count')
+
+    def __init__(self, name, element_type, element_count):
+        self.name = name
+        self.element_type = element_type
+        self.element_count = element_count
+
+    def emit_def(self):
+        name = self.name.replace(' ', '_')
+        et = self.element_type
+        ec = self.element_count
+        if ec is None:
+            return f'carray {name} [{et.emit_ref()}...]'
+        return f'carray {name} [{et.emit_ref()} * {ec}]'
+
+    def emit_ref(self):
+        return self.name.replace(' ', '_')
 
 
 class CPointer(SylvaRef):
@@ -67,7 +92,6 @@ class CPointer(SylvaRef):
         return f'cptr({self.base_type.emit_ref()}!)'
 
 
-# [TODO] I think this should decompose into some vals earlier
 class CEnum(SylvaDef):
 
     def __init__(self, type, values):
@@ -76,8 +100,8 @@ class CEnum(SylvaDef):
 
     def emit_def(self):
         return '\n'.join([
-            'const {name} {type.emit_ref()}'
-            for name, type in self.values.items()
+            'const {name} {type.emit_ref()}' for name,
+            type in self.values.items()
         ])
 
 
@@ -155,18 +179,14 @@ class CFunctionType(SylvaDef, SylvaRef):
             return (
                 '{}({})'.format(
                     keyword,
-                    ', '.join([
-                        param.emit_def() for param in self.parameters
-                    ])
+                    ', '.join([param.emit_def() for param in self.parameters])
                 )
             )
         # pylint: disable=consider-using-f-string
         return (
             '{}({}): {}'.format(
                 keyword,
-                ', '.join([
-                    param.emit_def() for param in self.parameters
-                ]),
+                ', '.join([param.emit_def() for param in self.parameters]),
                 self.return_type.emit_ref()
             )
         )
@@ -201,8 +221,9 @@ class CScalarType(SylvaRef):
         FLOAT = enum.auto()
         COMPLEX = enum.auto()
 
-    def __init__(self, type, size, is_signed, is_const, is_bitfield,
-                 bitfield_width):
+    def __init__(
+        self, type, size, is_signed, is_const, is_bitfield, bitfield_width
+    ):
         self.type = type
         self.size = size
         self.is_signed = is_signed
@@ -264,8 +285,8 @@ class CAnonymousStruct(AnonymousDef):
             return '\n'.join([
                 'cstruct {',
                 ',\n'.join([
-                    f'  {name}: {type.emit_ref()}'
-                    for name, type in self.fields.items()
+                    f'  {name}: {type.emit_ref()}' for name,
+                    type in self.fields.items()
                 ]),
                 '}'
             ])
@@ -285,8 +306,8 @@ class CStruct(SylvaDef, SylvaRef):
             return '\n'.join([
                 f'cstruct {self.name.replace(" ", "_")} {{',
                 ',\n'.join([
-                    f'  {name}: {type.emit_ref()}'
-                    for name, type in self.fields.items()
+                    f'  {name}: {type.emit_ref()}' for name,
+                    type in self.fields.items()
                 ]),
                 '}'
             ])
@@ -308,8 +329,8 @@ class CAnonymousUnion(AnonymousDef):
             return '\n'.join([
                 'cunion {',
                 ',\n'.join([
-                    f'  {name}: {type.emit_ref()}'
-                    for name, type in self.fields.items()
+                    f'  {name}: {type.emit_ref()}' for name,
+                    type in self.fields.items()
                 ]),
                 '}'
             ])
@@ -329,8 +350,8 @@ class CUnion(SylvaDef, SylvaRef):
             return '\n'.join([
                 f'cunion {self.name.replace(" ", "_")} {{',
                 ',\n'.join([
-                    f'  {name}: {type.emit_ref()}'
-                    for name, type in self.fields.items()
+                    f'  {name}: {type.emit_ref()}' for name,
+                    type in self.fields.items()
                 ]),
                 '}'
             ])
@@ -390,10 +411,17 @@ class DefinitionBuilder:
 
     def _process_cdef(self, cdef):
         if isinstance(cdef, CDefs.Array):
-            return CArray(
+            if cdef.name is None:
+                return CAnonymousArray(
+                    self._process_cdef(cdef.element_type), cdef.element_count
+                )
+            carray = CArray(
+                cdef.name,
                 self._process_cdef(cdef.element_type),
                 cdef.element_count
             )
+            self.defs[carray.name] = carray
+            return carray
         if isinstance(cdef, CDefs.Enum):
             vals = []
             for name, value in cdef.values.items():
@@ -406,20 +434,19 @@ class DefinitionBuilder:
                 cdef.name,
                 [
                     CFunctionParameter(name, self._process_cdef(ctype))
-                    for name, ctype in cdef.parameters.items()
+                    for name,
+                    ctype in cdef.parameters.items()
                 ],
                 self._process_cdef(cdef.return_type)
             )
             self.defs[cfunction.name] = cfunction
             return cfunction
         if isinstance(cdef, CDefs.FunctionPointer):
-            return CFunctionType(
-                [
-                    CFunctionParameter(name, self._process_cdef(ctype))
-                    for name, ctype in cdef.parameters.items()
-                ],
-                self._process_cdef(cdef.return_type)
-            )
+            return CFunctionType([
+                CFunctionParameter(name, self._process_cdef(ctype)) for name,
+                ctype in cdef.parameters.items()
+            ],
+                                 self._process_cdef(cdef.return_type))
         if isinstance(cdef, CDefs.Pointer):
             return CPointer(
                 self._process_cdef(cdef.base_type),
@@ -430,22 +457,23 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.ScalarType):
             return CScalarType.FromCDef(cdef)
         if isinstance(cdef, CDefs.Struct):
-            if cdef.name:
-                struct = CStruct(
-                    cdef.name,
-                    {
-                        name: self._process_cdef(ctype)
-                        for name, ctype in cdef.fields.items()
-                        if name != 'packed'
-                    }
-                )
-                self.defs[struct.name] = struct
-            else:
-                struct = CAnonymousStruct({
+            if not cdef.name:
+                return CAnonymousStruct({
                     name: self._process_cdef(ctype)
-                    for name, ctype in cdef.fields.items()
+                    for name,
+                    ctype in cdef.fields.items()
                 })
-            return struct
+            cstruct = CStruct(
+                cdef.name,
+                {
+                    name: self._process_cdef(ctype)
+                    for name,
+                    ctype in cdef.fields.items()
+                    if name != 'packed'
+                }
+            )
+            self.defs[cstruct.name] = cstruct
+            return cstruct
         if isinstance(cdef, CDefs.Typedef):
             underlying_type = self._process_cdef(cdef.type)
             if isinstance(underlying_type, Reference) and \
@@ -458,6 +486,11 @@ class DefinitionBuilder:
                     is_bitfield=False,
                     bitfield_width=None
                 )
+            elif isinstance(underlying_type, CArray):
+                underlying_type = CAnonymousArray(
+                    underlying_type.element_type,
+                    underlying_type.element_count
+                )
             alias = Alias(cdef.name, underlying_type)
             self.defs[alias.name] = alias
             return alias
@@ -467,32 +500,31 @@ class DefinitionBuilder:
                     cdef.name,
                     {
                         name: self._process_cdef(ctype)
-                        for name, ctype in cdef.fields.items()
+                        for name,
+                        ctype in cdef.fields.items()
                     }
                 )
                 self.defs[union.name] = union
             else:
                 union = CAnonymousUnion({
                     name: self._process_cdef(ctype)
-                    for name, ctype in cdef.fields.items()
+                    for name,
+                    ctype in cdef.fields.items()
                 })
             return union
         if isinstance(cdef, CDefs.BlockFunctionPointer):
-            return CFunctionType(
-                [
-                    CFunctionParameter(name, self._process_cdef(ctype))
-                    for name, ctype in cdef.parameters.items()
-                ],
-                self._process_cdef(cdef.return_type),
-                is_block=True
-            )
+            return CFunctionType([
+                CFunctionParameter(name, self._process_cdef(ctype)) for name,
+                ctype in cdef.parameters.items()
+            ],
+                                 self._process_cdef(cdef.return_type),
+                                 is_block=True)
         raise Exception(f'Unknown C definition: {cdef} ({type(cdef)})')
 
     @classmethod
     def FromLibcFiles(cls, libc_files, preprocessor, libclang=None):
         parser = Parser(preprocessor, libclang)
         return cls([
-            cdef
-            for libc_file in libc_files
+            cdef for libc_file in libc_files
             for cdef in parser.parse(libc_file)
         ])

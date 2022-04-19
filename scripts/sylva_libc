@@ -9,20 +9,18 @@ from sylva_libc.definitions import DefinitionBuilder
 
 def generate(input_files, preprocessor, aliases=None, libclang=None):
     builder = DefinitionBuilder.FromLibcFiles(
-        input_files,
-        preprocessor,
-        libclang
+        input_files, preprocessor, libclang
     )
     builder.build()
-    print(f'mod libc')
+    print('mod libc')
     print()
     print(f'const PLATFORM_NAME: "{platform.system()}"')
     print(f'const PLATFORM_VERSION: "{platform.release()}"')
     print(f'const PLATFORM_MACHINE: "{platform.machine()}"')
     print()
-    print(f'const STDIN_FILENO: {sys.stdin.fileno()}u')
-    print(f'const STDOUT_FILENO: {sys.stdout.fileno()}u')
-    print(f'const STDERR_FILENO: {sys.stderr.fileno()}u')
+    print(f'const STDIN_FILENO: {sys.stdin.fileno()}u32')
+    print(f'const STDOUT_FILENO: {sys.stdout.fileno()}u32')
+    print(f'const STDERR_FILENO: {sys.stderr.fileno()}u32')
     print()
 
     if aliases:
@@ -33,23 +31,27 @@ def generate(input_files, preprocessor, aliases=None, libclang=None):
     for definition in builder.defs.values():
         print(definition.emit_def())
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--preprocessor', type=str, required=True,
+        '--preprocessor',
+        type=str,
+        required=True,
         help='Path to preprocessor executable'
     )
     parser.add_argument(
-        '--libclang', type=str,
-        help='Path to libclang library'
+        '--libclang', type=str, help='Path to libclang library'
     )
     parser.add_argument(
-        '--alias', type=str, action='append', dest='aliases',
+        '--alias',
+        type=str,
+        action='append',
+        dest='aliases',
         help='Define an additional alias; ex: "__int128_t: i128"'
     )
     parser.add_argument(
-        'input_files', type=str, nargs='+',
-        help='Files to process'
+        'input_files', type=str, nargs='+', help='Files to process'
     )
 
     args = parser.parse_args()
