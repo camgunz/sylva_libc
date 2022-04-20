@@ -432,21 +432,22 @@ class DefinitionBuilder:
         if isinstance(cdef, CDefs.Function):
             cfunction = CFunction(
                 cdef.name,
-                [
+                [ # yapf: disable
                     CFunctionParameter(name, self._process_cdef(ctype))
-                    for name,
-                    ctype in cdef.parameters.items()
+                    for name, ctype in cdef.parameters.items()
                 ],
                 self._process_cdef(cdef.return_type)
             )
             self.defs[cfunction.name] = cfunction
             return cfunction
         if isinstance(cdef, CDefs.FunctionPointer):
-            return CFunctionType([
-                CFunctionParameter(name, self._process_cdef(ctype)) for name,
-                ctype in cdef.parameters.items()
-            ],
-                                 self._process_cdef(cdef.return_type))
+            return CFunctionType( # yapf: disable
+                [
+                    CFunctionParameter(name, self._process_cdef(ctype))
+                    for name, ctype in cdef.parameters.items()
+                ],
+                self._process_cdef(cdef.return_type)
+            )
         if isinstance(cdef, CDefs.Pointer):
             return CPointer(
                 self._process_cdef(cdef.base_type),
