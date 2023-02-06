@@ -26,7 +26,7 @@ class AnonymousDef(SylvaDef, SylvaRef):
         return self.emit_def()
 
 
-class Alias(SylvaDef):
+class TypeDef(SylvaDef):
 
     __slots__ = (
         'name',
@@ -38,7 +38,7 @@ class Alias(SylvaDef):
         self.target = target
 
     def emit_def(self):
-        return f'alias {self.name}: {self.target.emit_ref()}'
+        return f'typedef {self.name}: {self.target.emit_ref()}'
 
 
 class CAnonymousArray(AnonymousDef):
@@ -53,7 +53,7 @@ class CAnonymousArray(AnonymousDef):
         et = self.element_type
         ec = self.element_count
         if ec is None:
-            return f'carray[{et.emit_ref()}...]'
+            return f'cptr({et.emit_ref()})'
         return f'carray[{et.emit_ref()} * {ec}]'
 
 
@@ -71,7 +71,7 @@ class CArray(SylvaDef, SylvaRef):
         et = self.element_type
         ec = self.element_count
         if ec is None:
-            return f'carray {name} [{et.emit_ref()}...]'
+            return f'cptr({et.emit_ref()})'
         return f'carray {name} [{et.emit_ref()} * {ec}]'
 
     def emit_ref(self):
@@ -492,9 +492,9 @@ class DefinitionBuilder:
                     underlying_type.element_type,
                     underlying_type.element_count
                 )
-            alias = Alias(cdef.name, underlying_type)
-            self.defs[alias.name] = alias
-            return alias
+            typedef = TypeDef(cdef.name, underlying_type)
+            self.defs[typedef.name] = typedef
+            return typedef
         if isinstance(cdef, CDefs.Union):
             if cdef.name:
                 union = CUnion(

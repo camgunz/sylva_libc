@@ -7,7 +7,7 @@ import sys
 from sylva_libc.definitions import DefinitionBuilder
 
 
-def generate(input_files, preprocessor, aliases=None, libclang=None):
+def generate(input_files, preprocessor, typedefs=None, libclang=None):
     builder = DefinitionBuilder.FromLibcFiles(
         input_files, preprocessor, libclang
     )
@@ -23,11 +23,12 @@ def generate(input_files, preprocessor, aliases=None, libclang=None):
     print(f'const STDERR_FILENO: {sys.stderr.fileno()}u32')
     print()
 
-    if aliases:
-        for alias in aliases:
-            name, target = [x.strip() for x in alias.split(':')]
-            print(f'alias {name}: {target}')
+    if typedefs:
+        for typedef in typedefs:
+            name, target = [x.strip() for x in typedef.split(':')]
+            print(f'typedef {name}: {target}')
         print()
+
     for definition in builder.defs.values():
         print(definition.emit_def())
 
@@ -44,10 +45,10 @@ def main():
         '--libclang', type=str, help='Path to libclang library'
     )
     parser.add_argument(
-        '--alias',
+        '--typedef',
         type=str,
         action='append',
-        dest='aliases',
+        dest='typedefs',
         help='Define an additional alias; ex: "__int128_t: i128"'
     )
     parser.add_argument(
@@ -55,7 +56,7 @@ def main():
     )
 
     args = parser.parse_args()
-    generate(args.input_files, args.preprocessor, args.aliases, args.libclang)
+    generate(args.input_files, args.preprocessor, args.typedefs, args.libclang)
 
 
 main()
