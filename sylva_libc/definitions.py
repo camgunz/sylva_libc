@@ -172,7 +172,7 @@ class CFunctionType(SylvaDef, SylvaRef):
         self.is_block = is_block
 
     def emit(self):
-        keyword = 'cblockfntype' if self.is_block else 'cfntype'
+        keyword = 'cblockfn' if self.is_block else 'cfn'
         if (isinstance(self.return_type, CScalarType) and
                 self.return_type.type == CScalarType.BuiltinTypes.VOID):
             # pylint: disable=consider-using-f-string
